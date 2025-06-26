@@ -6,6 +6,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <map>
 #include <mutex>
 #include <queue>
 #include <random>
@@ -44,6 +45,7 @@ struct VecrtorHash {
     return std::hash<std::string>()(std::string(vec.begin(), vec.end()));
   }
 };
+std::map<std::string, int> m_path_vocab;
 std::unordered_map<std::vector<unsigned int>, unsigned int, VecrtorHash>
     path_vocab;
 size_t total_files = 0; // 总文件计数器
@@ -351,6 +353,8 @@ std::string lca_path_traverse(TSNode root,
         } else {
 
           std::vector<TSNode> path;
+          std::string path_str;
+          int path_hash_value = 0;
           TSNode node1 = leaves[i];
           TSNode node2 = leaves[j];
           if (!ts_node_is_null(node1) && !ts_node_is_null(node2)) {
@@ -372,21 +376,12 @@ std::string lca_path_traverse(TSNode root,
             }
 
             path.insert(path.end(), rpath.rbegin(), rpath.rend());
-            // TODO: 修改为向输出队列添加内容以实现处理和输出解耦
-            //  {
-            //    std::lock_guard<std::mutex> lock(path_mutex);
-            //    path_queue.emplace(std::move(path));
-            //  }
-            //
-            //
-            //
-            // 输出路径
             {
-              std::string path_str;
               std::string token1;
               std::string token2;
               unsigned int token1_hash = 0;
               unsigned int token2_hash = 0;
+              int type_vocab_query_value = 0;
               std::vector<unsigned int> path_int;
               for (auto it = path.begin(); it != path.end(); it++) {
                 TSNode node = *it;
@@ -402,15 +397,30 @@ std::string lca_path_traverse(TSNode root,
                     }
                     token1_hash = token_vocab[token1];
                     lock_token.unlock();
+                    std::string tmp;
+                    type_vocab_query_value = 0;
+                    tmp = node_type_to_string(node);
+                    lock_type.lock();
+                    type_vocab_query_value = type_vocab[tmp];
+                    if (type_vocab_query_value == 0) {
+                      type_vocab_query_value = type_vocab_hash++;
+                      type_vocab[tmp] = type_vocab_query_value;
+                    }
+                    // path_int.push_back(type_vocab[tmp]);
+                    path_str += "," + std::to_string(type_vocab_query_value);
+                    lock_type.unlock();
                   }
                 }
                 std::string tmp;
                 tmp = node_type_to_string(node);
                 lock_type.lock();
-                if (type_vocab[tmp] == 0) {
+                type_vocab_query_value = type_vocab[tmp];
+                if (type_vocab_query_value == 0) {
                   type_vocab[tmp] = type_vocab_hash++;
+                  type_vocab_query_value = type_vocab[tmp];
                 }
-                path_int.push_back(type_vocab[tmp]);
+                // path_int.push_back(type_vocab[tmp]);
+                path_str += "," + std::to_string(type_vocab_query_value);
                 lock_type.unlock();
                 if (it == path.end() - 1) {
                   token2 = souce.substr(ts_node_start_byte(node),
@@ -426,21 +436,30 @@ std::string lca_path_traverse(TSNode root,
                   std::string tmp;
                   tmp = node_type_to_string(node);
                   lock_type.lock();
-                  if (type_vocab[tmp] == 0) {
-                    type_vocab[tmp] = type_vocab_hash++;
+                  type_vocab_query_value = type_vocab[tmp];
+                  if (type_vocab_query_value == 0) {
+                    type_vocab_query_value = type_vocab_hash++;
+                    type_vocab[tmp] = type_vocab_query_value;
                   }
-                  path_int.push_back(type_vocab[tmp]);
+                  // path_int.push_back(type_vocab[tmp]);
+                  path_str += "," + std::to_string(type_vocab_query_value);
                   lock_type.unlock();
                   lock_path.lock();
-                  if (path_vocab[path_int] == 0) {
-                    path_vocab[path_int] = path_vocab_hash++;
+                  // if (path_vocab[path_int] == 0) {
+                  //   path_vocab[path_int] = path_vocab_hash++;
+                  // }
+                  // path_str = std::to_string(path_vocab[path_int]);
+
+                  if (m_path_vocab.find(path_str) == m_path_vocab.end()) {
+                    path_hash_value = path_vocab_hash++;
+                    m_path_vocab[path_str] = path_hash_value;
                   }
-                  path_str = std::to_string(path_vocab[path_int]);
                   lock_path.unlock();
                 }
               }
               // cleanNodeType(path_str);
-              result += (std::to_string(token1_hash) + ',' + path_str + ',' +
+              result += (std::to_string(token1_hash) + ',' +
+                         std::to_string(path_hash_value) + ',' +
                          std::to_string(token2_hash) + ' ');
             }
           }
